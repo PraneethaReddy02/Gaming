@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>2D Space Shooter Game</title>
+  <!-- Load D3.js from a CDN -->
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <style>
+    /* Set full-window black background for a space-like atmosphere */
+    body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      overflow: hidden;
+      color: white;
+      font-family: sans-serif;
+    }
+    /* Score display styling */
+    #score {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      font-size: 20px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+  <!-- Score counter -->
+  <div id="score">Score: 0</div>
+  <!-- Game canvas (SVG) -->
+  <svg id="game" width="800" height="600"></svg>
+
+  <script>
+    /**********************************
+     * 2D Space Shooter Game with D3.js
+     *
+     * This game demonstrates:
+     * - SVG manipulation using D3.js.
+     * - Keyboard event handling (arrow keys for movement, space bar for shooting).
+     * - Basic game loop with requestAnimationFrame.
+     * - Collision detection using distance calculations.
+     * - Interactive animations and sound effects.
+     **********************************/
+
+    // Get the SVG game canvas and set dimensions
+    const svg = d3.select("#game");
+    const width = +svg.attr("width");
+    const height = +svg.attr("height");
+
+    // Game state variables
+    let score = 0;
+    let bulletId = 0;
+    let asteroidId = 0;
+    const bullets = [];
+    const asteroids = [];
+
+    // Define spaceship properties
+    const spaceshipWidth = 50;
+    const spaceshipHeight = 20;
+    let spaceshipX = (width - spaceshipWidth) / 2;
+    const spaceshipY = height - spaceshipHeight - 10;
+    const spaceshipSpeed = 10; // pixels per key press
+
+    // Create the spaceship (a green rectangle)
+    const spaceship = svg.append("rect")
+                         .attr("x", spaceshipX)
+                         .attr("y", spaceshipY)
+                         .attr("width", spaceshipWidth)
+                         .attr("height", spaceshipHeight)
+                         .attr("fill", "green");
+
+    // Load sound effects (using royalty-free sound URLs)
+    const shootSound = new Audio('https://www.soundjay.com/button/sounds/button-16.mp3');
+    const explosionSound = new Audio('https://www.soundjay.com/explosion/explosion-01.mp3');
+
+    // Listen for keyboard events for spaceship movement and shooting
+    document.addEventListener("keydown", (event) => {
+      // Prevent key repeat spamming (only trigger on first press)
+      if (event.repeat) return;
+
+      switch (event.code) {
+        case "ArrowLeft":
+          // Move spaceship left, ensuring it stays within boundaries
+          spaceshipX = Math.max(0, spaceshipX - spaceshipSpeed);
+          spaceship.attr("x", spaceshipX);
+          break;
+        case "ArrowRight":
+          // Move spaceship right
+          spaceshipX = Math.min(width - spaceshipWidth, spaceshipX + spaceshipSpeed);
+          spaceship.attr("x", spaceshipX);
+          break;
+        case "Space":
+          // Spawn a bullet from the spaceship's top center when space is pressed
+          shootBullet();
+          break;
+      }
+    });
+
+    // Function to spawn a bullet (a small cyan circle)
+    function shootBullet() {
+      // Play the shooting sound effect
+      shootSound.currentTime = 0;
+      shootSound.play();
+
+      const bullet = {
+        id: bulletId++,
+        // Bullet spawns at the horizontal center of the spaceship and just above it
+        x: spaceshipX + spaceshipWidth / 2,
+        y: spaceshipY,
+        r: 5,
+        speed: 8 // upward speed
+      };
+      bullets.push(bullet);
+    }
+
+    // Function to spawn an asteroid at a random horizontal position at the top
+    function spawnAsteroid() {
+      const asteroid = {
+        id: asteroidId++,
+        x: Math.random() * (width - 30) + 15, // Ensure asteroid stays within bounds
+        y: -20, // Start off-screen above
+        r: 15, // Radius of asteroid
+        speed: 2 + Math.random() * 1.5 // Slight variability in falling speed
+      };
+      asteroids.push(asteroid);
+    }
+
+    // Set up periodic spawning of asteroids (every 1.5 seconds)
+    setInterval(spawnAsteroid, 1500);
+
+    // Function to update the score display
+    function updateScore() {
+      d3.select("#score").text("Score: " + score);
+    }
+
+    // Function to check for collisions between a bullet and an asteroid
+    function checkCollision(bullet, asteroid) {
+      const dx = bullet.x - asteroid.x;
+      const dy = bullet.y - asteroid.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      return distance < (bullet.r + asteroid.r);
+    }
+
+    // Game loop: update positions, detect collisions, and render elements
+    function gameLoop() {
+      // Update bullets: move upward and remove if off-screen
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const b = bullets[i];
+        b.y -= b.speed;
+        if (b.y < -b.r) {
+          bullets.splice(i, 1); // Remove bullet if off-screen
+        }
+      }
+
+      // Update asteroids: move downward and remove if off-screen
+      for (let i = asteroids.length - 1; i >= 0; i--) {
+        const a = asteroids[i];
+        a.y += a.speed;
+        if (a.y > height + a.r) {
+          asteroids.splice(i, 1);
+        }
+      }
+
+      // Check for collisions between each bullet and asteroid
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        for (let j = asteroids.length - 1; j >= 0; j--) {
+          if (checkCollision(bullets[i], asteroids[j])) {
+            // Collision detected: play explosion sound, update score, and remove both objects
+            explosionSound.currentTime = 0;
+            explosionSound.play();
+            score += 10;
+            updateScore();
+            bullets.splice(i, 1);
+            asteroids.splice(j, 1);
+            break; // Break out of the inner loop
+          }
+        }
+      }
+
+      // Render bullets using D3 data join
+      const bulletSelection = svg.selectAll(".bullet")
+        .data(bullets, d => d.id);
+
+      // Enter: append new circles for new bullets
+      bulletSelection.enter()
+        .append("circle")
+        .attr("class", "bullet")
+        .attr("r", d => d.r)
+        .attr("fill", "cyan")
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
+
+      // Update: update positions of existing bullets
+      bulletSelection
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
+
+      // Exit: remove bullets that are no longer in the data array
+      bulletSelection.exit().remove();
+
+      // Render asteroids similarly
+      const asteroidSelection = svg.selectAll(".asteroid")
+        .data(asteroids, d => d.id);
+
+      asteroidSelection.enter()
+        .append("circle")
+        .attr("class", "asteroid")
+        .attr("r", d => d.r)
+        .attr("fill", "red")
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
+
+      asteroidSelection
+        .attr("cx", d => d.x)
+        .attr("cy", d => d.y);
+
+      asteroidSelection.exit().remove();
+
+      // Continue the game loop
+      requestAnimationFrame(gameLoop);
+    }
+
+    // Start the game loop
+    requestAnimationFrame(gameLoop);
+  </script>
+</body>
+</html>
